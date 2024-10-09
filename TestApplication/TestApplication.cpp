@@ -1,5 +1,7 @@
 #include <Windows.h>
 #include <stdio.h>
+#include <iostream>
+#include "..\Python7Driver\Python7Common.h"
 
 #define IO_READ_REQUEST CTL_CODE(0x8000, 0x812, METHOD_BUFFERED, FILE_SPECIAL_ACCESS)
 
@@ -14,8 +16,11 @@ int main()
         return 1;
     }
     // Test values
+    Python7Input input;
     char ReadRequest[64] = "Hello World";
-    char ReturnBytes[64];
+    strcpy_s(input.message, ReadRequest);
+    Python7Output output;
+    //std::string ReturnBytes;
     DWORD bytes;
-    bool ok = DeviceIoControl(hDriver, IO_READ_REQUEST, &ReadRequest, sizeof(ReadRequest), &ReturnBytes, sizeof(ReadRequest), 0, 0);
+    bool ok = DeviceIoControl(hDriver, IOCTL_OPEN_PROCESS, &input, sizeof(input), &output, sizeof(output), &bytes, 0);
 }

@@ -1,8 +1,11 @@
 #pragma once
+//#include <iostream>
 
 struct Python7Input
 {
 	ULONG ProcessId;
+	char message[64];
+	//std::string message;
 };
 
 struct Python7Output
