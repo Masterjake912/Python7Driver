@@ -1,141 +1,135 @@
-#include <ntddk.h>
-#include "..\Python7Driver\Python7Common.h"
+#include <ntifs.h>
 
-void Python7Unload(PDRIVER_OBJECT);
-NTSTATUS Python7CreateClose(PDEVICE_OBJECT, PIRP);
-NTSTATUS Python7DeviceControl(PDEVICE_OBJECT, PIRP);
-//NTSTATUS Python7IoControl(PDEVICE_OBJECT, PIRP);
+extern "C" {
+	NTKERNELAPI NTSTATUS IoCreateDriver(PUNICODE_STRING DriverName,
+										PDRIVER_INITIALIZE InitializationFunction);
 
+	NTKERNELAPI NTSTATUS MmCopyVirtualMemory(PEPROCESS SourceProcess, PVOID SourceAddress,
+											 PEPROCESS TargetProcess, PVOID TargetAddress,
+											 SIZE_T BufferSize, KPROCESSOR_MODE PreviousMode,
+											 PSIZE_T ReturnSize);
+}
 
-extern "C" NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
-{
-	KdPrint(("Python7: DriverEntry\n"));
-	KdPrint(("Registry path: %wZ\n", RegistryPath));
-	DriverObject->DriverUnload = Python7Unload;
+// Helper for kernel debug printing. Prints messages in Debug but not Release
+void dbg_print(PCSTR text) {
+	// Otherwise you cannot build in Release mode.
+#ifndef DEBUG
+	UNREFERENCED_PARAMETER(text);
+#endif  // !DEBUG
 
-	RTL_OSVERSIONINFOW vi = { sizeof(vi) };
-	NTSTATUS status = RtlGetVersion(&vi);
-	if (!NT_SUCCESS(status))
-	{
-		KdPrint(("Failed in RtlGetVersion (0x%X)\n", status));
-		return status;
+	KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, text));
+}
+namespace driver {
+	namespace codes {
+		constexpr ULONG attachTo = CTL_CODE(FILE_DEVICE_UNKNOWN, 0x811, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+		constexpr ULONG readFrom = CTL_CODE(FILE_DEVICE_UNKNOWN, 0x812, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+		constexpr ULONG writeTo = CTL_CODE(FILE_DEVICE_UNKNOWN, 0x813, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
 	}
 
-	KdPrint(("Windows Version: %u.%u.%u\n", vi.dwMajorVersion, vi.dwMinorVersion, vi.dwBuildNumber));
+	struct RequestPacket {
+		HANDLE pid;
 
-	DriverObject->MajorFunction[IRP_MJ_CREATE] = Python7CreateClose;
-	DriverObject->MajorFunction[IRP_MJ_CLOSE] = Python7CreateClose;
-	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = Python7DeviceControl;
-	//DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = Python7IoControl;
+		PVOID target;
+		PVOID buffer;
+
+		SIZE_T size;
+		SIZE_T returnSize;
+	};
+
+	NTSTATUS Python7CreateClose(PDEVICE_OBJECT, PIRP Irp)
+	{
+		Irp->IoStatus.Status = STATUS_SUCCESS;
+		Irp->IoStatus.Information = 0;
+		IoCompleteRequest(Irp, IO_NO_INCREMENT);
+		return STATUS_SUCCESS;
+	}
+
+	NTSTATUS Python7DeviceControl(PDEVICE_OBJECT, PIRP Irp)
+	{
+		dbg_print("[+] Device control function called.\n");
+
+		NTSTATUS status = STATUS_INVALID_DEVICE_REQUEST;
+		PIO_STACK_LOCATION stack = IoGetCurrentIrpStackLocation(Irp);
+		
+		auto& dict = stack->Parameters.DeviceIoControl;
+		auto requestPacket = reinterpret_cast<RequestPacket*>(Irp->AssociatedIrp.SystemBuffer);
+		static PEPROCESS targProcess = nullptr;
+		
+		if (stack == nullptr || requestPacket == nullptr) {
+			IoCompleteRequest(Irp, IO_NO_INCREMENT);
+			return status;
+		}
+
+		switch (dict.IoControlCode)
+		{
+			case codes::attachTo:
+				status = PsLookupProcessByProcessId(requestPacket->pid, &targProcess);
+				break;
+			case codes::readFrom:
+				if (targProcess != nullptr)
+					status = MmCopyVirtualMemory(targProcess, requestPacket->target,
+						PsGetCurrentProcess(), requestPacket->buffer,
+						requestPacket->size, KernelMode, &requestPacket->returnSize);
+				break;
+			case codes::writeTo:
+				if (targProcess != nullptr)
+					status = MmCopyVirtualMemory(PsGetCurrentProcess(), requestPacket->buffer,
+						targProcess, requestPacket->target,
+						requestPacket->size, KernelMode, &requestPacket->returnSize);
+				break;
+			default:
+				break;
+		}
+
+		Irp->IoStatus.Status = status;
+		Irp->IoStatus.Information = sizeof(RequestPacket);
+		IoCompleteRequest(Irp, IO_NO_INCREMENT);
+		return STATUS_SUCCESS;
+	}
+
+}
+
+NTSTATUS DriverMain(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
+{
+	UNREFERENCED_PARAMETER(RegistryPath);
 
 	UNICODE_STRING devName = RTL_CONSTANT_STRING(L"\\Device\\Python7");
-	// RtlInitUnicodeString(&devName, L"\\Device\\Python7"); Same initialization as above
-
-	PDEVICE_OBJECT DeviceObject;
-	status = IoCreateDevice(DriverObject, 0, &devName, FILE_DEVICE_UNKNOWN, 0, FALSE, &DeviceObject);
+	PDEVICE_OBJECT DeviceObject = nullptr;
+	NTSTATUS status = IoCreateDevice(DriverObject, 0, &devName, FILE_DEVICE_UNKNOWN, FILE_DEVICE_SECURE_OPEN, FALSE, &DeviceObject);
 	if (!NT_SUCCESS(status))
 	{
-		KdPrint(("Failed in IoCreateDevice (0x%X\n", status));
+		dbg_print("[-] Failed to create driver device successfully.\n");
 		return status;
 	}
 
-	UNICODE_STRING symLink = RTL_CONSTANT_STRING(L"\\??\\Python7");
+	dbg_print("[+] Driver device created successfully!\n");
+
+	UNICODE_STRING symLink = RTL_CONSTANT_STRING(L"\\DosDevices\\Python7");
 	status = IoCreateSymbolicLink(&symLink, &devName);
 	if (!NT_SUCCESS(status))
 	{
 		IoDeleteDevice(DeviceObject);
-		KdPrint(("Failed in IoCreateSymbolLink (0x%X\n", status));
+		dbg_print("[-] Failed to create symbolic link to device successfully.\n");
 		return status;
 	}
 
+	dbg_print("[+] Created a symbolic link to device successfully!\n");
+
+	// Setup Device and Driver objects
+	SetFlag(DeviceObject->Flags, DO_BUFFERED_IO);
+	DriverObject->MajorFunction[IRP_MJ_CREATE] = driver::Python7CreateClose;
+	DriverObject->MajorFunction[IRP_MJ_CLOSE] = driver::Python7CreateClose;
+	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = driver::Python7DeviceControl;
+	ClearFlag(DeviceObject->Flags, DO_DEVICE_INITIALIZING);
+
+	dbg_print("[+] Driver has been succesfully intialized!\n");
+
 	return STATUS_SUCCESS;
 }
 
-void Python7Unload(PDRIVER_OBJECT DriverObject)
+// KdMapper uses this as an entry point
+extern "C" NTSTATUS DriverEntry()
 {
-	KdPrint(("Python7: Unload\n"));
-	UNICODE_STRING symLink = RTL_CONSTANT_STRING(L"\\??\\Python7");
-	IoDeleteSymbolicLink(&symLink);
-	IoDeleteDevice(DriverObject->DeviceObject);
+	UNICODE_STRING driverName = RTL_CONSTANT_STRING(L"\\Driver\\Python7");
+	return IoCreateDriver(&driverName, &DriverMain);
 }
-
-NTSTATUS Python7CreateClose(PDEVICE_OBJECT, PIRP Irp)
-{
-	Irp->IoStatus.Status = STATUS_SUCCESS;
-	Irp->IoStatus.Information = 0;
-	IoCompleteRequest(Irp, 0);
-	return STATUS_SUCCESS;
-}
-
-//NTSTATUS Python7IoControl(PDEVICE_OBJECT, PIRP Irp)
-//{
-//	PIO_STACK_LOCATION stack = IoGetCurrentIrpStackLocation(Irp);
-//	NTSTATUS status = STATUS_SUCCESS;
-//	ULONG codeReq = stack->Parameters.DeviceIoControl.IoControlCode;
-//	KdPrint(("In IO CONTROL"));
-//	if (codeReq == IO_READ_REQUEST)
-//	{
-//		KdPrint(("Input Buffer Length: %u", stack->Parameters.DeviceIoControl.InputBufferLength));
-//		KdPrint(("Value of Input Buffer: %s", stack->Parameters.DeviceIoControl.Type3InputBuffer));
-//		if (stack->Parameters.DeviceIoControl.InputBufferLength > 0 &&
-//			stack->Parameters.DeviceIoControl.Type3InputBuffer != NULL)
-//		{
-//			status = STATUS_SUCCESS;
-//			char* readRequest = (char*)stack->Parameters.DeviceIoControl.Type3InputBuffer;
-//			KdPrint(("Value read from Usermode: %u\n", readRequest));
-//		}
-//	}
-//	else if (codeReq == IO_WRITE_REQUEST)
-//	{
-//		status = STATUS_SUCCESS;
-//	}
-//
-//	Irp->IoStatus.Status = status;
-//	Irp->IoStatus.Information = 0;
-//	IoCompleteRequest(Irp, 0);
-//	return status;
-//}
-
-NTSTATUS Python7DeviceControl(PDEVICE_OBJECT, PIRP Irp)
-{
-	PIO_STACK_LOCATION stack = IoGetCurrentIrpStackLocation(Irp);
-	NTSTATUS status = STATUS_INVALID_DEVICE_REQUEST;
-	auto& dict = stack->Parameters.DeviceIoControl;
-	ULONG len = 0;
-
-	switch (dict.IoControlCode)
-	{
-	case IOCTL_OPEN_PROCESS:
-		if (dict.Type3InputBuffer == nullptr || Irp->UserBuffer == nullptr)
-		{
-			status = STATUS_INVALID_PARAMETER;
-			break;
-		}
-		if (dict.InputBufferLength < sizeof(Python7Input) || dict.OutputBufferLength < sizeof(Python7Output))
-		{
-			status = STATUS_BUFFER_TOO_SMALL;
-			break;
-		}
-
-		Python7Input* input = (Python7Input*)dict.Type3InputBuffer;
-		//Python7Output* output = (Python7Output*)Irp->UserBuffer;
-
-		KdPrint(("Message is: %s", input->message));
-		/*OBJECT_ATTRIBUTES attr;
-		InitializeObjectAttributes(&attr, nullptr, 0, nullptr, nullptr);
-		CLIENT_ID cid = { 0 };
-		cid.UniqueProcess = ULongToHandle(input->ProcessId);
-		status = ZwOpenProcess(&output->hProcess, PROCESS_ALL_ACCESS, &attr, &cid);
-		if (NT_SUCCESS(status))
-		{
-			len = sizeof(output);
-		}*/
-		break;
-	}
-
-	Irp->IoStatus.Status = status;
-	Irp->IoStatus.Information = len;
-	IoCompleteRequest(Irp, 0);
-	return STATUS_SUCCESS;
-}
-
