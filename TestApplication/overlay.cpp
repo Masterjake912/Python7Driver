@@ -157,65 +157,58 @@ void Overlay::DestroyOverlay()
 // FIX THIS FIND WINDOW A
 void Overlay::OverlayManager()
 {
-    while (g.Run)
+    // Window Style Changer
+    static LONG MenuStyle = WS_EX_LAYERED | WS_EX_TOPMOST;
+    static LONG ESPStyle = WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_TOPMOST;
+    LONG TmpLong = GetWindowLong(Hwnd, GWL_EXSTYLE);  // Gets current menu style.
+    HWND ForegroundWindow = GetForegroundWindow();  // Retrieves a handle to the foreground window (the window with which the user is currently working).
+    // If ShowMenu is true and MenuStyle is not currently set...
+    if (ShowMenu && MenuStyle != TmpLong)
     {
-        // Window Style Changer
-        static LONG MenuStyle = WS_EX_LAYERED | WS_EX_TOPMOST;
-        static LONG ESPStyle = WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_TOPMOST;
-        LONG TmpLong = GetWindowLong(Hwnd, GWL_EXSTYLE);  // Gets current menu style.
-        HWND ForegroundWindow = GetForegroundWindow();  // Retrieves a handle to the foreground window (the window with which the user is currently working).
-        // If ShowMenu is true and MenuStyle is not currently set...
-        if (ShowMenu && MenuStyle != TmpLong)
-        {
-            // Sets the window style (GWL_EXSTYLE) to MenuStyle
-            SetWindowLong(Hwnd, GWL_EXSTYLE, MenuStyle);
+        // Sets the window style (GWL_EXSTYLE) to MenuStyle
+        SetWindowLong(Hwnd, GWL_EXSTYLE, MenuStyle);
 
-            // Sets overlay to foreground window
-            if (ForegroundWindow != Hwnd) {
-                SetForegroundWindow(Hwnd);
-            }
+        // Sets overlay to foreground window
+        if (ForegroundWindow != Hwnd) {
+            SetForegroundWindow(Hwnd);
         }
-        else if (!ShowMenu && ESPStyle != TmpLong)
-        {
-            // Sets the window style (GWL_EXSTYLE) to ESPStyle
-            SetWindowLong(Hwnd, GWL_EXSTYLE, ESPStyle);
+    }
+    else if (!ShowMenu && ESPStyle != TmpLong)
+    {
+        // Sets the window style (GWL_EXSTYLE) to ESPStyle
+        SetWindowLong(Hwnd, GWL_EXSTYLE, ESPStyle);
 
-            // Sets overlay to foreground window
-            if (ForegroundWindow != Hwnd)
-                SetForegroundWindow(Hwnd);
-        }
+        // Sets overlay to foreground window
+        if (ForegroundWindow != Hwnd)
+            SetForegroundWindow(Hwnd);
+    }
 
-        // Toggles the ShowMenu state when a specific key is pressed
-        static bool menu_key = false;  // Debounces the key press to avoid multiple toggles from a single key press
-        if (IsKeyDown(g.MenuKey) && !menu_key)
-        {
-            ShowMenu = !ShowMenu;
+    // Toggles the ShowMenu state when a specific key is pressed
+    static bool menu_key = false;  // Debounces the key press to avoid multiple toggles from a single key press
+    if (IsKeyDown(g.MenuKey) && !menu_key)
+    {
+        ShowMenu = !ShowMenu;
 
-            menu_key = true;  // Debounces the key press to avoid multiple toggles from a single key press
-        }
-        else if (!IsKeyDown(g.MenuKey) && menu_key)
-        {
-            menu_key = false;  // Debounces the key press to avoid multiple toggles from a single key press
-        }
+        menu_key = true;  // Debounces the key press to avoid multiple toggles from a single key press
+    }
+    else if (!IsKeyDown(g.MenuKey) && menu_key)
+    {
+        menu_key = false;  // Debounces the key press to avoid multiple toggles from a single key press
+    }
 
-        // Retrieves the dimensions and screen position of the target window
-        RECT TmpRect = {};  // Size
-        POINT TmpPoint = {};  // Position
-        GetClientRect(Hwnd, &TmpRect);  // Get Size
-        ClientToScreen(Hwnd, &TmpPoint);  // Get Position
+    // Retrieves the dimensions and screen position of the target window
+    RECT TmpRect = {};  // Size
+    POINT TmpPoint = {};  // Position
+    GetClientRect(Hwnd, &TmpRect);  // Get Size
+    ClientToScreen(Hwnd, &TmpPoint);  // Get Position
 
-        // Compares the values to g.GameSize and g.GamePoint and updates the overlay window's position and size to match the target windows
-        if (TmpRect.left != g.GameSize.left || TmpRect.bottom != g.GameSize.bottom || TmpRect.top != g.GameSize.top || TmpRect.right != g.GameSize.right || TmpPoint.x != g.GamePoint.x || TmpPoint.y != g.GamePoint.y)
-        {
-            g.GameSize = TmpRect;
-            g.GamePoint = TmpPoint;
+    // Compares the values to g.GameSize and g.GamePoint and updates the overlay window's position and size to match the target windows
+    if (TmpRect.left != g.GameSize.left || TmpRect.bottom != g.GameSize.bottom || TmpRect.top != g.GameSize.top || TmpRect.right != g.GameSize.right || TmpPoint.x != g.GamePoint.x || TmpPoint.y != g.GamePoint.y)
+    {
+        g.GameSize = TmpRect;
+        g.GamePoint = TmpPoint;
 
-            SetWindowPos(Hwnd, nullptr, TmpPoint.x, TmpPoint.y, g.GameSize.right, g.GameSize.bottom, SWP_NOREDRAW);
-        }
-
-        // Sleep to reduce CPU usage
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        //std::this_thread::sleep_for(std::chrono::microseconds(10));
+        SetWindowPos(Hwnd, nullptr, TmpPoint.x, TmpPoint.y, g.GameSize.right, g.GameSize.bottom, SWP_NOREDRAW);
     }
 }
 

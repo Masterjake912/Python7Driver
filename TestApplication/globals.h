@@ -11,6 +11,7 @@ struct Globals
 	bool ShowMenu = false;  // Is menu showing or not
 	RECT GameSize{};
 	POINT GamePoint{};
+	int ActiveTab;
 
 	// Visual
 	bool ESP = true;

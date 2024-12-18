@@ -16,36 +16,32 @@ int screenHeight = GetSystemMetrics(SM_CYSCREEN);
 
 void Overlay::OverlayLoop(HANDLE hDriver)
 {
-	while (g.Run)
+	MSG msg;
+	while (PeekMessage(&msg, NULL, 0U, 0U, PM_REMOVE))
 	{
-		MSG msg;
-		while (PeekMessage(&msg, NULL, 0U, 0U, PM_REMOVE))
-		{
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
-		}
-
-		ImGui_ImplDX11_NewFrame();
-		ImGui_ImplWin32_NewFrame();
-		ImGui::NewFrame();
-
-		Rd.RenderInfo();
-
-		if (ShowMenu)
-			Rd.RenderMenu();
-
-		if (g.ESP)
-			Rd.RenderESP(hDriver, g);
-
-		ImGui::Render();
-		const float clear_color_with_alpha[4] = { 0.f, 0.f, 0.f, 0.f };
-		g_pd3dDeviceContext->OMSetRenderTargets(1, &g_mainRenderTargetView, NULL);
-		g_pd3dDeviceContext->ClearRenderTargetView(g_mainRenderTargetView, clear_color_with_alpha);
-		ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-
-		g_pSwapChain->Present(1, 0);
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);
 	}
+
+	ImGui_ImplDX11_NewFrame();
+	ImGui_ImplWin32_NewFrame();
+	ImGui::NewFrame();
+
+	Rd.RenderInfo();
+
+	if (ShowMenu)
+		Rd.RenderMenu();
+
+	if (g.ESP)
+		Rd.RenderESP(hDriver, g);
+
+	ImGui::Render();
+	const float clear_color_with_alpha[4] = { 0.f, 0.f, 0.f, 0.f };
+	g_pd3dDeviceContext->OMSetRenderTargets(1, &g_mainRenderTargetView, NULL);
+	g_pd3dDeviceContext->ClearRenderTargetView(g_mainRenderTargetView, clear_color_with_alpha);
+	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+
+	g_pSwapChain->Present(0, 0);
 }
 
 int main()
@@ -75,12 +71,16 @@ int main()
 			if (!Ov.CreateOverlay())
 				return 2;
 			g.Run = true;
-			//Rd.UpdateList();
-			std::thread([&]() { Rd.UpdateList(driver, client); }).detach();
-			//Ov.OverlayManager();
-			std::thread([&]() { Ov.OverlayManager(); }).detach();
-			Ov.OverlayLoop(driver); 
-			//auto bhop = async(launch::async, ToggleBhop, driver, client);
+			while (g.Run) {
+				Rd.UpdateList(driver, client);
+				Ov.OverlayManager();
+				Ov.OverlayLoop(driver);
+				std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			}
+			/*std::thread([&]() { Rd.UpdateList(driver, client); }).detach();*/
+			
+			/*std::thread([&]() { Ov.OverlayManager(); }).detach();*/
+			
 		}
 	}
 }

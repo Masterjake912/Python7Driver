@@ -37,14 +37,37 @@ struct Vector3 {
 	{
 		return Vector3{ x * factor, y * factor, z * factor };
 	}
+	constexpr const bool operator!=(const Vector3& other) const
+	{
+		return x != other.x || y != other.y || z != other.z;
+	}
 
 	Vector3 WorldToScreen(ViewMatrix_t matrix) const
 	{
-		float _x = matrix[0][0] * x + matrix[0][1] * y + matrix[0][2] * z + matrix[0][3];
-		float _y = matrix[1][0] * x + matrix[1][1] * y + matrix[1][2] * z + matrix[1][3];
+		float screenW = matrix[3][0] * x + matrix[3][1] * y + matrix[3][2] * z + matrix[3][3];
 
-		float w = matrix[3][0] * x + matrix[3][1] * y + matrix[3][2] * z + matrix[3][3];
+		if (screenW < 0.001f)
+			return false;
 
+		float screenX = matrix[0][0] * x + matrix[0][1] * y + matrix[0][2] * z + matrix[0][3];
+		float screenY = matrix[1][0] * x + matrix[1][1] * y + matrix[1][2] * z + matrix[1][3];
+
+		float camX = screenWidth / 2;
+		float camY = screenHeight / 2;
+
+		float x = camX + (camX * screenX / screenW);
+		float y = camY - (camY * screenY / screenW);
+
+		return { x,y,screenW };
+	}
+
+	/*Vector3 WorldToScreen(ViewMatrix_t matrix) const
+	{
+		float _x = matrix[0][0] * x + matrix[0][1] * y + matrix[0][2] * z + -matrix[0][3];
+		float _y = matrix[1][0] * x + matrix[1][1] * y + matrix[1][2] * z + -matrix[1][3];
+
+		float w = matrix[3][0] * x + matrix[3][1] * y + matrix[3][2] * z + -matrix[3][3];
+		
 		if (w < 0.01f)
 			return false;
 
@@ -59,7 +82,7 @@ struct Vector3 {
 		y -= 0.5f * _y * screenHeight + 0.5f;
 
 		return { x,y,w };
-	}
+	}*/
 
 	float x, y, z;
 };

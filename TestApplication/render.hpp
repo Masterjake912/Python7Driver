@@ -3,7 +3,7 @@
 #include <vector>
 #include <string>
 #include <thread>
-
+#include <d3d11.h>
 #include "ImGui\imgui.h"
 #include "ImGui\imgui_impl_win32.h"
 #include "ImGui\imgui_impl_dx11.h"
@@ -13,6 +13,8 @@
 #include "offsets.hpp"
 #include "buttons.hpp"
 #include "vector.hpp"
+#include "playerinfo.hpp"
+#include "overlay.hpp"
 
 #pragma comment (lib, "User32.lib")
 
@@ -40,7 +42,8 @@ public:
 	ViewMatrix_t mViewMatrix;
 	uintptr_t mEntityList;
 	int mLocalTeam;
-
+	std::vector<PlayerInfo*> mFriendlyTeam;
+	std::vector<PlayerInfo*> mEnemyTeam;
 	void UpdateList(HANDLE hDriver, uintptr_t client);
 	void RenderInfo();
 	void RenderMenu();
@@ -68,7 +71,13 @@ private:
 	}
 	void HealthBar(float x, float y, float w, float h, int value, int v_max)
 	{
+		// Draw the background bar (black with transparency)
 		RectFilled(x, y, x + w, y + h, ImColor(0.f, 0.f, 0.f, 0.75f), 0.f, 0);
-		RectFilled(x, y, x + w, y + ((h / float(v_max)) * (float)value), ImColor(min(510 * (v_max - value) / 100, 255), min(510 * value / 100, 255), 25, 255), 0.0f, 0);
+
+		// Calculate the height of the filled portion based on health
+		float filledHeight = (h / float(v_max)) * float(value);
+
+		// Draw the filled portion from the top down
+		RectFilled(x, y + (h - filledHeight), x + w, y + h, ImColor(min(510 * (v_max - value) / v_max, 255), min(510 * value / v_max, 255), 25, 255), 0.0f, 0);
 	}
 };

@@ -131,5 +131,6 @@ NTSTATUS DriverMain(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 extern "C" NTSTATUS DriverEntry()
 {
 	UNICODE_STRING driverName = RTL_CONSTANT_STRING(L"\\Driver\\Python7");
+	dbg_print("[+] Driver is poopy!\n");
 	return IoCreateDriver(&driverName, &DriverMain);
 }
